@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { addQuestionToSection, createTest, getAllTests, getTestById, getTestQuestions } from "../controllers/test.controller";
-import { verifyJWT,verifyIsTeacher } from "../middleware/auth.middleware";
-import { upload } from "../middleware/multer.middleware";
+import { addQuestionToSection, createTest, getAllTests, getTestById, getTestQuestions,submitTest } from "../controllers/test.controller.js";
+import { verifyJWT,verifyIsTeacher } from "../middleware/auth.middleware.js";
+import { upload } from "../middleware/multer.middleware.js";
 
 const router=Router();
 router.route("/create-test").post(
@@ -10,7 +10,7 @@ router.route("/create-test").post(
     upload.single("thumbnail"),
     createTest
 )
-router.route("/add-question/:testId/:sectoinName").post(verifyJWT,verifyIsTeacher,addQuestionToSection);
+router.route("/add-question/:testId/:sectionName").post(verifyJWT,verifyIsTeacher,addQuestionToSection);
 router.route("/all-tests").get(verifyJWT,getAllTests);
 router.route("/t/:testId").get(verifyJWT,getTestById);
 router.route("/questions/:testId").get(verifyJWT,getTestQuestions)

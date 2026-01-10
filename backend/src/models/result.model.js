@@ -9,6 +9,10 @@ const resultSchema=new Schema({
         type:Schema.Types.ObjectId,
         ref:"Test",
     },
+    batch:{
+        type:Schema.Types.ObjectId,
+        ref:"Batch"
+    },
     score:{
         type:Number,
         required:true,
@@ -18,8 +22,10 @@ const resultSchema=new Schema({
     },
     answers:[{
         questionId:Schema.Types.ObjectId,
+        topic:String,
         submittedAnswer:[String],
         isCorrect:Boolean,
+        timeSpent:Number
     },],
     timeTaken:{
         type:Number,

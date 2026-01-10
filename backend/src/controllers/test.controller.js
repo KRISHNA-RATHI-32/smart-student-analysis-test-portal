@@ -154,7 +154,7 @@ const submitTest=asyncHandler(async(req,res)=>{
     const {testId}=req.params;
     const {answers,timeTaken}=req.body;
     const test=await Test.findById(testId);
-    if(!test)throw new ApiResponse(404,"Test not found");
+    if(!test)throw new ApiError(404,"Test not found");
     let finalScore=0;
     let TotalMarksCalculated=0;
     const processedAnswers=[];
@@ -164,7 +164,7 @@ const submitTest=asyncHandler(async(req,res)=>{
             let isCorrect=false;
             let currentSubmittedAnswer=[];
             if(studentAns){
-                currentSubmittedAnswer=studentAns.selectedOption
+                currentSubmittedAnswer=studentAns.selectedOption||[]
                 const isCorrect=JSON.stringify(q.correctAnswer.sort())===JSON.stringify(studentAns.selectedOption.sort());
                 if(isCorrect){
                     finalScore+=q.marks;
@@ -182,8 +182,9 @@ const submitTest=asyncHandler(async(req,res)=>{
         })
     })
     //finaly save in db
-    const finalResult=await Result.create({
-    sudent:req.user._id,
+    if(finalScore<0)finalScore=0;
+    const result=await Result.create({
+    student:req.user._id,
     test:testId,
     score:finalScore,
     totalMarks:TotalMarksCalculated,
