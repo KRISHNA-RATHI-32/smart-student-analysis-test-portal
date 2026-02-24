@@ -32,7 +32,8 @@ const testSchema = new Schema({
     sections: [{
         sectionName: String,
         questions: [questionSchema]
-    }]
+    }],
+    thumbnail:{type:String}
 }, { timestamps: true });
 
 export const Test = mongoose.model("Test", testSchema);
