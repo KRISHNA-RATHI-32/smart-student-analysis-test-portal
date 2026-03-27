@@ -4,6 +4,7 @@ import {ApiResponse} from "../utils/ApiResponse.js"
 import {User} from "../modles/user.model.js"
 
 const generateAccessAndRefreshTokens=async(userId)=>{
+    //we are using try catch block because there can be some error while generating tokens or finding user by id so we have to handle that error and send proper response to the client
     try{
         const user=await User.findById(userId)
         const accessToken=user.generateAccessToken()
