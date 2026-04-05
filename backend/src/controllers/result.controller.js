@@ -5,10 +5,19 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { Test } from "../modles/test.model.js";
 
+const validateTestId = (testId) => {
+  if (!mongoose.isValidObjectId(testId)) {
+    throw new ApiError(400, "Invalid test id");
+  }
+};
+
 const getLeaderboardByTest = asyncHandler(async (req, res) => {
 
   const { testId } = req.params;
   const { page = 1, limit = 10 } = req.query;
+  validateTestId(testId);
+  const pageNum = Number(page);
+  const limitNum = Number(limit);
 
   const aggregate = Result.aggregate([
 
@@ -16,22 +25,17 @@ const getLeaderboardByTest = asyncHandler(async (req, res) => {
     {
       $match: {
         test: new mongoose.Types.ObjectId(testId)
-        //It does three things:
-        // Validation: It checks if the string you passed is a valid 24-character hex. If it’s not (e.g., "abc-123"), it will throw an error.
-        // Conversion: It transforms that string into binary data.
-        // The Handshake: It allows MongoDB to perform a lightning-fast binary comparison between your query and the documents stored on the disk.
-
       }
     },
 
     // Stage B: Join users
     {
-      $lookup: {
+      $lookup: {//by usin lookup we are joining the result model with the user model to get the student details like name which we want to show in the leaderboard
         from: "users",
-        localField: "student",
+        localField: "student",//local field is the field in the result model which contains the student id
         foreignField: "_id",
         as: "student"
-      }
+      }//actually we have only one student for each result but lookup always returns an array so we will get an array of one element, we will unwind it in the next stage
     },
 
     // Stage C: Flatten
@@ -66,15 +70,15 @@ const getLeaderboardByTest = asyncHandler(async (req, res) => {
   ]);
 
   const options = {
-    page: parseInt(page),
-    limit: parseInt(limit)
+    page: pageNum,
+    limit: limitNum
   };
 
   const leaderboard = await Result.aggregatePaginate(aggregate, options);
 
   // Stage F: Rank calculation
   leaderboard.docs = leaderboard.docs.map((item, index) => ({
-    rank: (page - 1) * limit + index + 1,
+    rank: (pageNum - 1) * limitNum + index + 1,
     ...item
   }));
 
@@ -85,14 +89,24 @@ const getLeaderboardByTest = asyncHandler(async (req, res) => {
 
 const getMyRank = asyncHandler(async (req, res) => {
   const { testId } = req.params;
+  validateTestId(testId);
   const studentId = req.user._id;
   const results = await Result.find({ test: testId })
-    .sort({ score: -1, timeTake: 1 })
-    .select("student");
-  if (!results.lenght) {
+    .sort({ score: -1, timeTaken: 1 })
+    .select("student");//we are only selecting the student field because we only need the student id to calculate the rank, we don't need other details
+  if (!results.length) {
     throw new ApiError(404, "No results found in this test")
   }
   let rank = null;
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].student.toString() === studentId.toString()) {
+      rank = i + 1;
+      break;
+    }
+  }
+  return res.status(200).json(
+    new ApiResponse(200, { rank, totalStudents: results.length }, "Rank fetched")
+  );
 });
 
 const getMyResults = asyncHandler(async (req, res) => {
@@ -124,7 +138,7 @@ const getMyResults = asyncHandler(async (req, res) => {
         accuracy: {
           $cond: [
             { $gt: ["$totalMarks", 0] },
-            { $multiply: [{ $divide: ["$score", $totalMarks] }, 100] }, 0
+            { $multiply: [{ $divide: ["$score", "$totalMarks"] }, 100] }, 0
           ]
         }
       }
@@ -167,15 +181,17 @@ const getMyOverallAccuracy = asyncHandler(async (req, res) => {
             { $gt: ["$totalMarks", 0] },
             {
               $multiply: [{ $divide: ["$totalScore", "$totalMarks"] }, 100]
-            }
+            },
+            0
           ]
         }
       }
     }
 
   ]);
-  return res.status(200).json(new ApiResponse(200, data[0] || { overallAccuray: 0 }, "overall accuracy fetched"))
+  return res.status(200).json(new ApiResponse(200, data[0] || { overallAccuracy: 0 }, "overall accuracy fetched"))
 });
+//in the below function we are calculating the progress of the student over time by fetching all the results of the student and then calculating the accuracy for each result and returning it in a format which can be easily used to plot a graph in the frontend, we are also sorting the results by createdAt field to show the progress in chronological order
 const getMyProgressGraph = asyncHandler(async (req, res) => {
   const studentId = req.user._id;
   const progress = await Result.aggregate([
@@ -214,7 +230,7 @@ const getMyProgressGraph = asyncHandler(async (req, res) => {
     }
 
   ]);
-  return res.status(200).json(new ApiResponse(200, progress, "Progress graph data fetched")) ;
+  return res.status(200).json(new ApiResponse(200, progress, "Progress graph data fetched"));
 })
 const getTopicsWiseAnalysis = asyncHandler(async (req, res) => {
   const studentId = req.user._id;
@@ -230,10 +246,10 @@ const getTopicsWiseAnalysis = asyncHandler(async (req, res) => {
     {
       $group: {
         _id: "$answers.topic",
-        totalQuestions: { $sum: 1 },//it acts as a counter to count the total number of questions
+        totalQuestions: { $sum: 1 },
         correctAnswers: {
           $sum: {
-            $cond: ["$answers.isCorrect", 1, 0]//it is simply used as the ternary operator in which if the answer is correct it will return 1 otherwise 0 to count the total number of correct answers
+            $cond: ["$answers.isCorrect", 1, 0]
           }
 
         },
@@ -281,7 +297,7 @@ const getTopicsWiseAnalysis = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, topicAnalysis, "Weak topic analysis fetched"));
 });
 const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
-  const studentId = user.req._id;
+  const studentId = req.user._id;
   const analysis = await Result.aggregate([
     {
       $match: {
@@ -289,7 +305,7 @@ const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
       }
     },
     {
-      $unwind: "answers"
+      $unwind: "$answers"
     },
     {
       $group: {
@@ -297,7 +313,7 @@ const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
         totalQuestions: { $sum: 1 },
         correctAnswers: {
           $sum: {
-            $cond: ["answers.isCorrect", 1, 0]
+            $cond: ["$answers.isCorrect", 1, 0]
           }
         },
         totalTime: { $sum: "$answers.timeSpent" }
@@ -309,9 +325,9 @@ const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
         totalQuestions: 1,
         avgTime: {
           $cond: [
-            { $eq: ["$totalQuestions", 0] }, // Condition: Kya totalQuestions 0 hai?
-            0,                               // If True: 0 return karo
-            { $divide: ["$totalTime", "$totalQuestions"] } // If False: Divide karo
+            { $eq: ["$totalQuestions", 0] },
+            0,
+            { $divide: ["$totalTime", "$totalQuestions"] }
           ]
         },
         accuracy: {
@@ -335,27 +351,23 @@ const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
         avgTime: 1,
         accuracy: 1,
         performance: {
-          $cond: [
-            {
-              $and: [
-                { $gt: ["$accuracy", 75] },
-                { $lt: ["$avgTime", 60] }
-              ]
-            },
-            "Fast & Accurate",
-            {
-              $cond: [
-                {
-                  $and: [
-                    { $lt: ["accuracy", 50] },
-                    { $gt: ["$avgTime", 90] }
-                  ]
-                },
-                "Slow & Inaccurate",
-                "Moderate"
-              ]
-            }
-          ]
+          $switch: {
+            branches: [
+              {
+                case: { $and: [{ $gt: ["$accuracy", 75] }, { $lt: ["$avgTime", 60] }] },
+                then: "Fast & Accurate"
+              },
+              {
+                case: { $and: [{ $lt: ["$accuracy", 50] }, { $gt: ["$avgTime", 90] }] },
+                then: "Slow & Inaccurate"
+              },
+              {
+                case: { $and: [{ $gt: ["$accuracy", 75] }, { $gt: ["$avgTime", 90] }] },
+                then: "Accurate but Slow"
+              }
+            ],
+            default: "Moderate"
+          }
         }
       }
     }
@@ -367,6 +379,7 @@ const getSpeedVsAccuracyAnalysis = asyncHandler(async (req, res) => {
 });
 const startTest = asyncHandler(async (req, res) => {
   const { testId } = req.params;
+  validateTestId(testId);
   const alreadyCompleted = await Result.findOne({
     student: req.user._id,
     test: testId,
@@ -398,9 +411,8 @@ const startTest = asyncHandler(async (req, res) => {
 })
 
 const submitTest = asyncHandler(async (req, res) => {
-  //matching the answers
-
   const { testId } = req.params;
+  validateTestId(testId);
   const { answers, timeTaken } = req.body;
   const test = await Test.findById(testId);
   if (!test) throw new ApiError(404, "Test not found");
@@ -425,18 +437,12 @@ const submitTest = asyncHandler(async (req, res) => {
       let currentSubmittedAnswer = [];
       if (studentAns) {
         currentSubmittedAnswer = Array.isArray(studentAns.options) ? studentAns.options : [studentAns.options];
-        //we have made an array if the options are only one element the the only element will be string and json.stringify works as JSON.stringify(["4"]) → '["4"]'
-
-        // JSON.stringify("4") → '"4"'
-
-        // Result: false (Even though the answer is technically right!).
-        const sortedCorrect = [...q.correctAnswer].sort().map(String);//map individually converty to string for extra saftey measure
+        const sortedCorrect = [...q.correctAnswer].sort().map(String);
         const sortedSubmitted = [...currentSubmittedAnswer].sort().map(String);
-
 
         isCorrect =
           JSON.stringify(sortedCorrect) ===
-          JSON.stringify(sortedSubmitted);//with spread opertor we have created a shallo copy
+          JSON.stringify(sortedSubmitted);
 
         if (isCorrect) {
           finalScore += q.marks;
@@ -452,14 +458,12 @@ const submitTest = asyncHandler(async (req, res) => {
         submittedAnswer: currentSubmittedAnswer,
         isCorrect: isCorrect,
         timeSpent: studentAns ? studentAns.timeSpent : 0,
-        topic: q.topic // Storing topic for future performance analytics but this is not a good approach because if in future we want to change the topic name then it will create problem in analytics so better approach is to store the topic id and then refer it to topic collection to get the topic name but for now we are doing this for simplicity this is not working although we have stored the topic name in result collection because we are storing the topic name from question collection and in question collection we have stored the topic name as string but in result collection we are storing the topic name as object id so we have to change the topic name in question collection to object id and then refer it to topic collection to get the topic name but for now we are doing this for simplicity
-
+        topic: q.topic
       })
 
       TotalMarksCalculated += q.marks;
     })
   })
-  //finaly save in db
   if (finalScore < 0) finalScore = 0;
   result.score = finalScore;
   result.status = "completed";
@@ -474,18 +478,19 @@ const submitTest = asyncHandler(async (req, res) => {
       totalQuestions: processedAnswers.length,
       correct: correctCount,
       incorrect: wrongCount,
-      accuracy: ((correctCount / processedAnswers.length) * 100).toFixed(2) + "%"
+      accuracy: (processedAnswers.length ? ((correctCount / processedAnswers.length) * 100) : 0).toFixed(2) + "%"
     }
   }, "Test Submitted successfully!:"))
 })
 const getAttemptStatus = asyncHandler(async (req, res) => {
   const { testId } = req.params;
+  validateTestId(testId);
   const attempt = await Result.findOne({
     student: req.user._id,
     test: testId
   }).select("status startTime timeTaken score");
   if (!attempt) {
-    return res.status(200).json(
+    return res.status(200).json(//we are returning 200 status code here because the request is successful but the test is not started yet, we are also returning a custom status in the response to indicate that the test is not started yet
       new ApiResponse(200, { status: "not-started" }, "Test not started yet")
     );
 
@@ -501,8 +506,8 @@ const getAttemptStatus = asyncHandler(async (req, res) => {
 })
 const getTestSubmissions = asyncHandler(async (req, res) => {
   const { testId } = req.params;
+  validateTestId(testId);
   const { page = 1, limit = 10 } = req.query;
-  //Jab hum URL ke peeche question mark (?) lagate hain, toh uske baad jo kuch bhi likha hota hai, use Query String kehte hain. Express automatically unhe ek object mein convert karke req.query mein daal deta hai.
   const aggregate = Result.aggregate([
     {
       $match: {
@@ -524,7 +529,7 @@ const getTestSubmissions = asyncHandler(async (req, res) => {
         studentName: "$student.fullName",
         score: 1,
         totalMarks: 1,
-        timeTake: 1,
+        timeTaken: 1,
         submittedAt: "$submittedAt",
         accuracy: {
           $cond: [
@@ -548,6 +553,6 @@ const getTestSubmissions = asyncHandler(async (req, res) => {
     limit: Number(limit)
   };
   const submissions = await Result.aggregatePaginate(aggregate, options);
-  return res.status(200).json(200, new ApiResponse(200, submissions, "Paginated test submissions fetched"))
+  return res.status(200).json(new ApiResponse(200, submissions, "Paginated test submissions fetched"))
 })
 export { getLeaderboardByTest, getMyRank, getMyResults, getMyOverallAccuracy, getMyProgressGraph, getTopicsWiseAnalysis, getSpeedVsAccuracyAnalysis, startTest, submitTest, getAttemptStatus, getTestSubmissions };

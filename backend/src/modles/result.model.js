@@ -3,11 +3,11 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2"
 const resultSchema = new Schema({
     student: {
         type: Schema.Types.ObjectId,
-        ref: "User",
+ref: "User",
     },
     test: {
         type: Schema.Types.ObjectId,
-        ref: "Test",
+        ref: "Test",//here we only give the reference to the test, we don't need to embed the test details in the result schema because we can populate the test details when we need it using the reference
     },
     batch: {
         type: Schema.Types.ObjectId,

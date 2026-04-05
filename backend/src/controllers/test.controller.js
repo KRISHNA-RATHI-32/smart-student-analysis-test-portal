@@ -4,12 +4,22 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { Test } from "../modles/test.model.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import mongoose from "mongoose"
-import { Result } from "../modles/result.model.js"
 import fs from "fs"
+
+const validateTestId = (testId) => {
+    if (!mongoose.isValidObjectId(testId)) {
+        throw new ApiError(400, "Invalid test id");
+    }
+}
 const createTest = asyncHandler(async (req, res) => {
     const { title, description, duration, totalMarks, category } = req.body;
-    if ([title, duration, totalMarks].some((field) => field?.trim() == "")) {
+    if ([title, duration, totalMarks].some((field) => String(field ?? "").trim() === "")) {
         throw new ApiError(400, "Title, Duration, and Total Marks are required");
+    }
+    const parsedDuration = Number(duration);
+    const parsedTotalMarks = Number(totalMarks);
+    if (!Number.isFinite(parsedDuration) || !Number.isFinite(parsedTotalMarks)) {
+        throw new ApiError(400, "Duration and Total Marks must be valid numbers");
     }
     const existedTest = await Test.findOne({ title });
 
@@ -27,11 +37,11 @@ const createTest = asyncHandler(async (req, res) => {
     const test = await Test.create({
         title,
         description,
-        duration,
-        totalMarks,
-        category,
+        duration: parsedDuration,
+        totalMarks: parsedTotalMarks,
+        category,//ye category field is not defined in the model but we can add it dynamically in the document as mongodb is schema less in nature,this contains the category of the test like math,science etc which will help in filtering the test based on category
         thumbnail: thumbnail.url,
-        createdBy: req.user._id
+        teacher: req.user._id
     })
     return res
         .status(201)
@@ -60,6 +70,7 @@ const addSection = asyncHandler(async (req, res) => {
 })
 const addQuestionToSection = asyncHandler(async (req, res) => {
     const { testId, sectionName } = req.params;
+    validateTestId(testId);//we are validating the test id to make sure it is a valid mongodb object id
     const {
         questionText,
         questionType,
@@ -141,7 +152,7 @@ const addQuestionToSection = asyncHandler(async (req, res) => {
     if (!updateTest) {
         throw new ApiError(404, "Test or Section not found");
     }
-    return res.status(200).json(new ApiResponse(200, { questionText, sectionName,topic }, "Question successfully added"))
+    return res.status(200).json(new ApiResponse(200, { questionText, sectionName, topic }, "Question successfully added"))
 })
 const getAllTests = asyncHandler(async (req, res) => {
     //we onely want the data to be displayed questions and sections ko hide rakhenge taki response fast rhe
@@ -152,6 +163,7 @@ const getAllTests = asyncHandler(async (req, res) => {
 });
 const getTestById = asyncHandler(async (req, res) => {
     const { testId } = req.params;
+    validateTestId(testId);
     //in this also we exclude the questions ,only test infor will send
     const test = await Test.findById(testId).select("-sections");
     if (!test) {
@@ -163,11 +175,12 @@ const getTestById = asyncHandler(async (req, res) => {
 })
 const getTestQuestions = asyncHandler(async (req, res) => {
     const { testId } = req.params;
+    validateTestId(testId);
     //aggregation Pipeline starts
     const testWithQuestions = await Test.aggregate([
         {
             $match: {
-                _id: new mongoose.Types.ObjectId(testId)
+                _id: new mongoose.Types.ObjectId(testId)//ye id string format me aata hai lekin mongodb me object id format me hota hai isliye hum usko convert karte hai taki match ho sake
             }
         },
         {
@@ -194,7 +207,8 @@ const getTestQuestions = asyncHandler(async (req, res) => {
                                         options: "$$q.options",
                                         marks: "$$q.marks",
                                         negativeMarks: "$$q.negativeMarks",
-                                        topic: "$$q.topic"?"$$q.topic":"general",
+                                        correctAnswer: "$$q.correctAnswer",
+                                        topic: { $ifNull: ["$$q.topic", "general"] },
                                     }
                                 }
                             }

@@ -26,9 +26,11 @@ const questionSchema = new Schema({
 const testSchema = new Schema({
     title: { type: String, required: true },
     description: String,
-    teacher: { type: Schema.Types.ObjectId, ref: "User" },
+    teacher: { type: Schema.Types.ObjectId, ref: "User" },//teacher is the one who creates the test
     duration: { type: Number, required: true },
-    batch: { type: Schema.Types.ObjectId, ref: "Batch" },
+    totalMarks: { type: Number, required: true },
+    category: { type: String, default: "general" },//it is just for the filtering purpose 
+    batch: { type: Schema.Types.ObjectId, ref: "Batch" },//batch is the 
     sections: [{
         sectionName: String,
         questions: [questionSchema]

@@ -11,7 +11,6 @@ import { startTest,
         getTestSubmissions
      } from "../controllers/result.controller.js";
 import { verifyJWT,verifyIsTeacher } from "../middleware/auth.middleware.js";
-import { upload } from "../middleware/multer.middleware.js";
 const router=Router()
 //attempt lifecycle
 router.post("/start/:testId",verifyJWT,startTest);
