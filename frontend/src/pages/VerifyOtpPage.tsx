@@ -6,6 +6,7 @@ import { GraduationCap, ShieldCheck, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { toast } from "sonner";
+import { OTP_REGEX } from "@/lib/validators";
 
 const RESEND_COOLDOWN = 60; // seconds
 
@@ -17,6 +18,7 @@ const VerifyOtpPage = () => {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [otpError, setOtpError] = useState("");
 
   // Cooldown timer
   useEffect(() => {
@@ -35,12 +37,22 @@ const VerifyOtpPage = () => {
     }
   }, [email, navigate]);
 
+  const handleOtpChange = (value: string) => {
+    setOtp(value);
+    // Clear error once user enters 6 valid digits
+    if (OTP_REGEX.test(value)) {
+      setOtpError("");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length < 6) {
-      toast.error("Please enter the full OTP");
+    // ─── Regex validation: must be exactly 6 digits ───
+    if (!OTP_REGEX.test(otp)) {
+      setOtpError("Please enter a valid 6-digit OTP.");
       return;
     }
+    setOtpError("");
     setLoading(true);
     try {
       const res = await authApi.verifyOtp({ email, otp });
@@ -95,8 +107,8 @@ const VerifyOtpPage = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex justify-center">
-              <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+            <div className="flex flex-col items-center gap-2">
+              <InputOTP maxLength={6} value={otp} onChange={handleOtpChange}>
                 <InputOTPGroup>
                   <InputOTPSlot index={0} />
                   <InputOTPSlot index={1} />
@@ -106,6 +118,7 @@ const VerifyOtpPage = () => {
                   <InputOTPSlot index={5} />
                 </InputOTPGroup>
               </InputOTP>
+              {otpError && <p className="text-xs text-destructive">{otpError}</p>}
             </div>
             <Button type="submit" className="w-full h-11" disabled={loading}>
               {loading ? "Verifying..." : "Verify Email"}

@@ -8,7 +8,10 @@ import {
   logoutUser,
   changePassword,
   getCurrentuser,
-  refreshAccessToken
+  refreshAccessToken,
+  forgotPassword,
+  verifyPasswordResetOtp,
+  resetPassword
 } from "../controllers/user.controller.js";
 
 const router = Router();
@@ -19,6 +22,9 @@ router.route("/verify-otp").post(verifyOtp);
 router.route("/resend-otp").post(resendOtp);
 router.route("/login").post(loginUser);
 router.route("/refresh-token").post(refreshAccessToken);
+router.route("/forgot-password").post(forgotPassword);
+router.route("/verify-reset-otp").post(verifyPasswordResetOtp);
+router.route("/reset-password").post(resetPassword);
 
 // Protected routes (auth needed)
 router.route("/logout").post(verifyJWT, logoutUser);

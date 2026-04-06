@@ -11,6 +11,19 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { adminApi, type UserPayload } from "@/lib/api";
+import {
+  validateFullName,
+  validateEmail,
+  validateUsername,
+  validatePassword,
+} from "@/lib/validators";
+
+type TeacherFieldErrors = {
+  fullName?: string;
+  email?: string;
+  username?: string;
+  password?: string;
+};
 
 const UserManagement = () => {
   const [search, setSearch] = useState("");
@@ -20,6 +33,7 @@ const UserManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [teacherFieldErrors, setTeacherFieldErrors] = useState<TeacherFieldErrors>({});
 
   const fetchUsers = async () => {
     try {
@@ -50,18 +64,45 @@ const UserManagement = () => {
     t.email.toLowerCase().includes(search.toLowerCase())
   );
 
+  const updateTeacherField = (field: string, value: string) => {
+    setNewTeacher((p) => ({ ...p, [field]: value }));
+    // Live-clear errors once the user corrects
+    if (teacherFieldErrors[field as keyof TeacherFieldErrors]) {
+      const validator =
+        field === "fullName" ? validateFullName :
+        field === "email" ? validateEmail :
+        field === "username" ? validateUsername :
+        validatePassword;
+      setTeacherFieldErrors((p) => ({ ...p, [field]: validator(value) }));
+    }
+  };
+
   const handleCreateTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeacher.fullName || !newTeacher.email || !newTeacher.username || !newTeacher.password) {
-      toast.error("All fields are required");
+
+    // ─── Regex validation ───
+    const errors: TeacherFieldErrors = {
+      fullName: validateFullName(newTeacher.fullName),
+      email: validateEmail(newTeacher.email),
+      username: validateUsername(newTeacher.username),
+      password: validatePassword(newTeacher.password),
+    };
+
+    const hasErrors = Object.values(errors).some((e) => e !== "");
+    if (hasErrors) {
+      setTeacherFieldErrors(errors);
+      toast.error("Please fix the highlighted fields.");
       return;
     }
+
+    setTeacherFieldErrors({});
     setCreating(true);
     try {
       await adminApi.addTeacher(newTeacher);
       toast.success("Teacher account created!");
       setDialogOpen(false);
       setNewTeacher({ fullName: "", email: "", username: "", password: "" });
+      setTeacherFieldErrors({});
       await fetchUsers();
     } catch (err: any) {
       toast.error(err.message || "Failed to create teacher");
@@ -101,22 +142,52 @@ const UserManagement = () => {
               <DialogHeader>
                 <DialogTitle>Create Teacher Account</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreateTeacher} className="space-y-4 mt-4">
+              <form onSubmit={handleCreateTeacher} className="space-y-4 mt-4" noValidate>
                 <div className="space-y-2">
                   <Label>Full Name</Label>
-                  <Input value={newTeacher.fullName} onChange={(e) => setNewTeacher({ ...newTeacher, fullName: e.target.value })} placeholder="Dr. John Smith" />
+                  <Input
+                    value={newTeacher.fullName}
+                    onChange={(e) => updateTeacherField("fullName", e.target.value)}
+                    onBlur={() => setTeacherFieldErrors((p) => ({ ...p, fullName: validateFullName(newTeacher.fullName) }))}
+                    placeholder="Dr. John Smith"
+                    className={teacherFieldErrors.fullName ? "border-destructive" : ""}
+                  />
+                  {teacherFieldErrors.fullName && <p className="text-xs text-destructive">{teacherFieldErrors.fullName}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" value={newTeacher.email} onChange={(e) => setNewTeacher({ ...newTeacher, email: e.target.value })} placeholder="john@school.edu" />
+                  <Input
+                    type="email"
+                    value={newTeacher.email}
+                    onChange={(e) => updateTeacherField("email", e.target.value)}
+                    onBlur={() => setTeacherFieldErrors((p) => ({ ...p, email: validateEmail(newTeacher.email) }))}
+                    placeholder="john@school.edu"
+                    className={teacherFieldErrors.email ? "border-destructive" : ""}
+                  />
+                  {teacherFieldErrors.email && <p className="text-xs text-destructive">{teacherFieldErrors.email}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Username</Label>
-                  <Input value={newTeacher.username} onChange={(e) => setNewTeacher({ ...newTeacher, username: e.target.value })} placeholder="johnsmith" />
+                  <Input
+                    value={newTeacher.username}
+                    onChange={(e) => updateTeacherField("username", e.target.value.toLowerCase())}
+                    onBlur={() => setTeacherFieldErrors((p) => ({ ...p, username: validateUsername(newTeacher.username) }))}
+                    placeholder="johnsmith"
+                    className={teacherFieldErrors.username ? "border-destructive" : ""}
+                  />
+                  {teacherFieldErrors.username && <p className="text-xs text-destructive">{teacherFieldErrors.username}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Password</Label>
-                  <Input type="password" value={newTeacher.password} onChange={(e) => setNewTeacher({ ...newTeacher, password: e.target.value })} placeholder="Min. 6 characters" />
+                  <Input
+                    type="password"
+                    value={newTeacher.password}
+                    onChange={(e) => updateTeacherField("password", e.target.value)}
+                    onBlur={() => setTeacherFieldErrors((p) => ({ ...p, password: validatePassword(newTeacher.password) }))}
+                    placeholder="Min. 8 characters"
+                    className={teacherFieldErrors.password ? "border-destructive" : ""}
+                  />
+                  {teacherFieldErrors.password && <p className="text-xs text-destructive">{teacherFieldErrors.password}</p>}
                 </div>
                 <Button type="submit" className="w-full" disabled={creating}>
                   {creating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : "Create Teacher"}

@@ -117,7 +117,7 @@ const resendOtp = asyncHandler(async (req, res) => {
 // ─── Login ───
 const loginUser = asyncHandler(async (req, res) => {
 
-  const { email, username=" ", password } = req.body;
+  const { email, username = " ", password } = req.body;
   // console.log(req.body);
 
   const user = await User.findOne({
@@ -222,7 +222,39 @@ const changePassword = asyncHandler(async (req, res) => {
 const getCurrentuser = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) throw new ApiError(400, "Email is required");
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) throw new ApiError(404, "No user found with this email");
+  const otp = generateOtp();
+  console.log(`[DEV ONLY] Password reset OTP for ${email.toLowerCase()}: ${otp}`);
+  await Otp.deleteMany({ email: email.toLowerCase() });
+  await Otp.create({ email: email.toLowerCase(), otp });
+  await sendOtpEmail(email, otp, "Password Reset OTP");
+  return res.status(200).json(new ApiResponse(200, { email }, "OTP sent to your email for password reset"));
+})
+const verifyPasswordResetOtp = asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) throw new ApiError(400, "Email and OTP are required");
+  
+  const otpRecord=await Otp.findOne({email:email.toLowerCase(),otp});
+  if(!otpRecord) throw new ApiError(400<"Invalid or expired OTP");
+  return res.status(200).json(new ApiResponse(200,{email},"OTP verified. You can now reset your password"));
+})
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword} = req.body;
+  if(!email || !otp || !newPassword) throw new ApiError(400, "Email, OTP and new password are required");
+  const otpRecord=await Otp.findOne({email:email.toLowerCase(),otp});
+  if(!otpRecord) throw new ApiError(400<"Invalid or expired OTP");
+  const user=await User.findOne({email:email.toLowerCase()});
+  if(!user) throw new ApiError(404,"User not found");
+  user.password=newPassword;
+  await user.save({validateBeforeSave:false});
+  await Otp.deleteMany({email:email.toLowerCase()});
+  return res.status(200).json(new ApiResponse(200,{}, "Password reset successfully. Please log in with your new password"));
 
+})
 export {
   registerUser,
   verifyOtp,
@@ -231,5 +263,6 @@ export {
   logoutUser,
   changePassword,
   getCurrentuser,
-  refreshAccessToken
+  refreshAccessToken,
+  forgotPassword
 };

@@ -9,6 +9,13 @@ import { KeyRound, Loader2, Eye, EyeOff } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { validatePassword, validateConfirmPassword, passwordRules } from "@/lib/validators";
+
+type FieldErrors = {
+  oldPassword?: string;
+  newPassword?: string;
+  confirmPassword?: string;
+};
 
 const ChangePassword = () => {
   const navigate = useNavigate();
@@ -19,26 +26,30 @@ const ChangePassword = () => {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!oldPassword.trim() || !newPassword.trim()) {
-      toast.error("Both passwords are required");
-      return;
+
+    // ─── Regex validation ───
+    const errors: FieldErrors = {
+      oldPassword: !oldPassword.trim() ? "Current password is required." : "",
+      newPassword: validatePassword(newPassword),
+      confirmPassword: validateConfirmPassword(confirmPassword, newPassword),
+    };
+
+    // Extra: new password must differ from old
+    if (!errors.newPassword && oldPassword === newPassword) {
+      errors.newPassword = "New password must differ from current password.";
     }
-    if (newPassword.length < 6) {
-      toast.error("New password must be at least 6 characters");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords don't match");
-      return;
-    }
-    if (oldPassword === newPassword) {
-      toast.error("New password must be different from old password");
+
+    const hasErrors = Object.values(errors).some((e) => e !== "");
+    if (hasErrors) {
+      setFieldErrors(errors);
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
     try {
       await authApi.changePassword({ oldPassword, newPassword });
@@ -69,7 +80,8 @@ const ChangePassword = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              {/* Current Password */}
               <div className="space-y-2">
                 <Label htmlFor="oldPassword">Current Password</Label>
                 <div className="relative">
@@ -77,9 +89,12 @@ const ChangePassword = () => {
                     id="oldPassword"
                     type={showOld ? "text" : "password"}
                     value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
+                    onChange={(e) => {
+                      setOldPassword(e.target.value);
+                      if (fieldErrors.oldPassword) setFieldErrors((p) => ({ ...p, oldPassword: "" }));
+                    }}
                     placeholder="Enter current password"
-                    className="pr-10"
+                    className={`pr-10 ${fieldErrors.oldPassword ? "border-destructive" : ""}`}
                   />
                   <button
                     type="button"
@@ -89,8 +104,10 @@ const ChangePassword = () => {
                     {showOld ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {fieldErrors.oldPassword && <p className="text-xs text-destructive">{fieldErrors.oldPassword}</p>}
               </div>
 
+              {/* New Password */}
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <div className="relative">
@@ -98,9 +115,21 @@ const ChangePassword = () => {
                     id="newPassword"
                     type={showNew ? "text" : "password"}
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    className="pr-10"
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (fieldErrors.newPassword) {
+                        setFieldErrors((p) => ({ ...p, newPassword: validatePassword(e.target.value) }));
+                      }
+                      if (confirmPassword && fieldErrors.confirmPassword) {
+                        setFieldErrors((p) => ({
+                          ...p,
+                          confirmPassword: validateConfirmPassword(confirmPassword, e.target.value),
+                        }));
+                      }
+                    }}
+                    onBlur={() => setFieldErrors((p) => ({ ...p, newPassword: validatePassword(newPassword) }))}
+                    placeholder="Min. 8 characters"
+                    className={`pr-10 ${fieldErrors.newPassword ? "border-destructive" : ""}`}
                   />
                   <button
                     type="button"
@@ -110,17 +139,49 @@ const ChangePassword = () => {
                     {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {fieldErrors.newPassword && <p className="text-xs text-destructive">{fieldErrors.newPassword}</p>}
+
+                {/* Live password strength checklist */}
+                {newPassword && (
+                  <ul className="mt-2 space-y-0.5 text-xs bg-muted/50 rounded-lg p-3">
+                    {passwordRules.map((rule) => (
+                      <li key={rule.label} className={rule.test(newPassword) ? "text-green-600" : "text-muted-foreground"}>
+                        {rule.test(newPassword) ? "✓" : "○"} {rule.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
+              {/* Confirm Password */}
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm New Password</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (fieldErrors.confirmPassword) {
+                      setFieldErrors((p) => ({
+                        ...p,
+                        confirmPassword: validateConfirmPassword(e.target.value, newPassword),
+                      }));
+                    }
+                  }}
+                  onBlur={() =>
+                    setFieldErrors((p) => ({
+                      ...p,
+                      confirmPassword: validateConfirmPassword(confirmPassword, newPassword),
+                    }))
+                  }
                   placeholder="Re-enter new password"
+                  className={fieldErrors.confirmPassword ? "border-destructive" : ""}
                 />
+                {fieldErrors.confirmPassword && <p className="text-xs text-destructive">{fieldErrors.confirmPassword}</p>}
+                {confirmPassword && !fieldErrors.confirmPassword && (
+                  <p className="text-xs text-green-600">✓ Passwords match</p>
+                )}
               </div>
 
               <Button type="submit" className="w-full" disabled={loading}>
