@@ -207,7 +207,7 @@ const getTestQuestions = asyncHandler(async (req, res) => {
                                         options: "$$q.options",
                                         marks: "$$q.marks",
                                         negativeMarks: "$$q.negativeMarks",
-                                        correctAnswer: "$$q.correctAnswer",
+                                        // correctAnswer: "$$q.correctAnswer",
                                         topic: { $ifNull: ["$$q.topic", "general"] },
                                     }
                                 }

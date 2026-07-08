@@ -24,7 +24,7 @@ const getLeaderboardByTest = asyncHandler(async (req, res) => {
     // Stage A: Filter by test
     {
       $match: {
-        test: new mongoose.Types.ObjectId(testId)
+        test: new mongoose.Types.ObjectId(testId),status:"completed"
       }
     },
 
@@ -91,7 +91,7 @@ const getMyRank = asyncHandler(async (req, res) => {
   const { testId } = req.params;
   validateTestId(testId);
   const studentId = req.user._id;
-  const results = await Result.find({ test: testId })
+  const results = await Result.find({ test: testId,status:"completed" })
     .sort({ score: -1, timeTaken: 1 })
     .select("student");//we are only selecting the student field because we only need the student id to calculate the rank, we don't need other details
   if (!results.length) {
@@ -114,7 +114,8 @@ const getMyResults = asyncHandler(async (req, res) => {
   const results = await Result.aggregate([
     {
       $match: {
-        student: new mongoose.Types.ObjectId(studentId)
+        student: new mongoose.Types.ObjectId(studentId),
+        status:"completed"
       }
     },
     {
@@ -197,7 +198,8 @@ const getMyProgressGraph = asyncHandler(async (req, res) => {
   const progress = await Result.aggregate([
     {
       $match: {
-        student: new mongoose.Types.ObjectId(studentId)
+        student: new mongoose.Types.ObjectId(studentId),
+        status:"completed"
       }
     },
     {
@@ -398,15 +400,22 @@ const startTest = asyncHandler(async (req, res) => {
       new ApiResponse(200, alreadyStarted, "Test already started")
     );
   }
-  const newAttempt = await Result.create({
-    student: req.user._id,
-    test: testId,
-    status: "started",
-    startTime: new Date()
-  });
-  return res.status(201).json(
-    new ApiResponse(201, newAttempt, "Test started successfully")
-  );
+  try {
+    const newAttempt = await Result.create({
+      student: req.user._id,
+      test: testId,
+      status: "started",
+      startTime: new Date()
+    });
+    return res.status(201).json(new ApiResponse(201, newAttempt, "Test started successfully"));
+  } catch (err) {
+    if (err.code === 11000) {
+      // Caught the race condition: fetch and return the one that just got created
+      const existing = await Result.findOne({ student: req.user._id, test: testId });
+      return res.status(200).json(new ApiResponse(200, existing, "Test already started"));
+    }
+    throw err;
+  }
 
 })
 
@@ -423,6 +432,16 @@ const submitTest = asyncHandler(async (req, res) => {
   if (!result) throw new ApiError(403, "Test not started yet");
   if (result.status === "completed") {
     throw new ApiError(403, "Test already submitted");
+  }
+  // --- SERVER-SIDE TIMER ENFORCEMENT START ---
+  const elapsedSeconds = (Date.now() - result.startTime.getTime()) / 1000;
+  const allowedSeconds = test.duration * 60 + 30; // 30-second grace period for network lag
+  // Cap the recorded time to the max duration, completely ignoring the frontend's payload
+  const calculatedTimeTaken = Math.min(elapsedSeconds, test.duration * 60);
+  if (elapsedSeconds > allowedSeconds) {
+      // Optional: You could throw an error here, but silently capping the time 
+      // and grading what they submitted is usually better UX for network drops.
+      throw new ApiError(403, "Test time limit exceeded");
   }
   let answersMap = new Map(answers.map((a) => [a.questionId, a]))
   let finalScore = 0;

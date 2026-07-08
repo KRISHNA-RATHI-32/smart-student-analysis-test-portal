@@ -1,7 +1,8 @@
 import { v2 as cloudinary } from "cloudinary";
-import fs from "fs"; // File System to handle temporary files
+import fs from "fs"; 
 import dotenv from "dotenv"
 dotenv.config();
+
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -9,20 +10,23 @@ cloudinary.config({
 });
 
 const uploadOnCloudinary = async (localFilePath) => {
+    if (!localFilePath) return null;
+    
     try {
-        if (!localFilePath) return null;
         // Upload the file to Cloudinary
         const response = await cloudinary.uploader.upload(localFilePath, {
             resource_type: "auto"
         });
-        // File has been uploaded successfully
-        fs.unlinkSync(localFilePath); // Remove the local temporary file
         return response;
     } catch (error) {
-        fs.unlinkSync(localFilePath); // Remove the local temporary file even if upload fails
-        console.log(error);
+        console.error("Cloudinary upload failed:", error.message);
         return null;
+    } finally {
+        // 🚨 Guarded cleanup: Only attempt to delete if the file actually exists
+        if (fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath);
+        }
     }
 };
 
-export { uploadOnCloudinary };
+export { uploadOnCloudinary }; 

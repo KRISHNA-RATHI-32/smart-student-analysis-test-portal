@@ -6,12 +6,17 @@ async function request<T>(endpoint: string, options: {
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
-  params?: Record<string, string | number>;//this is a type of object that can have string or number as values like a map. params contains query parameters for the URL, like ?page=1&limit=10.
+  params?: Record<string, string | number>;//this is a type of object that can have//**  string or number as values like a map. params contains query parameters for the URL, like ?page=1&limit=10. */Loop runs:
+
+// k = "page", v = 1 → set("page", "1")
+// k = "limit", v = 10 → set("limit", "10")
 } = {}): Promise<T> {
   const { method = "GET", body, headers = {}, params } = options;
   let url = `${BASE_URL}${endpoint}`;
   if (params) {
-    const searchParams = new URLSearchParams();
+  const searchParams = new URLSearchParams();//👉 This is a built-in helper to build URLs like:
+
+// ?page=1&limit=10
     for (const [k, v] of Object.entries(params)) {
       searchParams.set(k, String(v));
     }
@@ -124,7 +129,18 @@ export const authApi = {
     request<{ statusCode: number; data: UserPayload; message: string }>(
       "/users/me"
     ),
-
+  forgotPassword: (data: { email: string }) =>
+    request<{ statusCode: number; data: { email: string }; message: string }>(
+      "/users/forgot-password", { method: "POST", body: data }
+    ),
+  verifyForgotPasswordOtp: (data: { email: string; otp: string }) =>
+    request<{ statusCode: number; data: { email: string }; message: string }>(
+      "/users/verify-forgot-password-otp", { method: "POST", body: data }
+    ),
+  resetPassword: (data: { email: string; otp: string; newPassword: string }) =>
+    request<{ statusCode: number; data: { email: string }; message: string }>(
+      "/users/reset-password", { method: "POST", body: data }
+    ),
   changePassword: (data: { oldPassword: string; newPassword: string }) =>
     request<{ statusCode: number; data: object; message: string }>(
       "/users/change-password", { method: "POST", body: data }

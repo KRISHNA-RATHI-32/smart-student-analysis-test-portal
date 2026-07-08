@@ -7,6 +7,7 @@ const otpSchema = new Schema({
     lowercase: true,
     trim: true
   },
+  purpoe:{type:String,enum:["register","reset"],default:"register"},
   otp: {
     type: String,
     required: true

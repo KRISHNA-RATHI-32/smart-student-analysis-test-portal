@@ -5,7 +5,7 @@ class ApiError extends Error{
         errors=[],
         stack=""//error stack
     ){
-        super(message)
+        super(message)  
         this.statusCode=statusCode
         this.data=null
         this.message=message
@@ -15,7 +15,7 @@ class ApiError extends Error{
             this.stack=stack;
 
         }else{
-            Error.captureStackTrace(this,this.constructor)
+            Error.captureStackTrace(this,this.constructor)//this will capture the stack trace of the error and assign it to the stack property of the error object. The first argument is the error object itself, and the second argument is the constructor function of the error class. This helps to exclude the constructor function from the stack trace, making it cleaner and more relevant to where the error actually occurred.
         }
     }
 }

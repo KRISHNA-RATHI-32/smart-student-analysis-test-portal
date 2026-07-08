@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { type } from "os";
 
 const userSchema = new Schema({
   fullName: {
@@ -39,6 +40,13 @@ const userSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "Batch"
   },
+  avatar:{type:String,default:""},
+  phone:{
+    type:String,
+  },
+  isActive:{type:Boolean,default:true},
+  children:[{type:Schema.Types.ObjectId,ref:"User"}],
+  role:{type:String,enum:["student","teacher","admin","parent"],default:"student"},
   refreshToken: String
 }, { timestamps: true });
 

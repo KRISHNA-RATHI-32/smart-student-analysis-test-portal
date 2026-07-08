@@ -17,6 +17,7 @@ export const sendOtpEmail = async (email, otp) => {
     console.log("⚠️  SMTP not configured — OTP logged to console only");
     return;
   }
+  if(process.env.Node_ENV!=="production")
   console.log("ENV CHECK:", process.env.SMTP_EMAIL, process.env.SMTP_PASSWORD);
 
   try {
@@ -35,6 +36,7 @@ export const sendOtpEmail = async (email, otp) => {
         </div>
       `
     });
+    if(process.env.Node_ENV!=="production")
     console.log(`✅ OTP email sent to ${email}`);
   } catch (error) {
     console.error("❌ Failed to send OTP email:", error.message);

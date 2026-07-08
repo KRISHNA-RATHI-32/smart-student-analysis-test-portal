@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { User } from "../modles/user.model.js"
 import { Otp } from "../modles/otp.model.js"
 import { sendOtpEmail } from "../utils/sendEmail.js"
+import { cookieOptions } from "../utils/cookieOptions.js"
 import jwt from "jsonwebtoken"
 
 // ─── Helper: generate 6-digit OTP ───
@@ -84,13 +85,12 @@ const verifyOtp = asyncHandler(async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save({ validateBeforeSave: false });
 
-  const options = { httpOnly: true, secure: false, sameSite: "lax" };
   const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
 
   return res
     .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(new ApiResponse(200, { user: loggedInUser }, "Email verified and logged in successfully"));
 });
 
@@ -157,7 +157,7 @@ const loginUser = asyncHandler(async (req, res) => {
     .status(200)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(new ApiResponse(200, { user: loggedInUser }, "Logged in successfully"));
+    .json(new ApiResponse(200, { user: loggedInUser ,accessToken,refreshToken}, "Logged in successfully"));
 });
 
 // ─── Logout ───
@@ -264,5 +264,7 @@ export {
   changePassword,
   getCurrentuser,
   refreshAccessToken,
-  forgotPassword
+  forgotPassword,
+  verifyPasswordResetOtp,
+  resetPassword
 };
