@@ -5,12 +5,13 @@ import {
   verifyOtp,
   resendOtp,
   loginUser,
+  updateProfile,
   logoutUser,
   changePassword,
   getCurrentuser,
   refreshAccessToken,
   forgotPassword,
-  verifyPasswordResetOtp,
+  verifyForgotPasswordOtp,
   resetPassword
 } from "../controllers/user.controller.js";
 
@@ -23,9 +24,9 @@ router.route("/resend-otp").post(resendOtp);
 router.route("/login").post(loginUser);
 router.route("/refresh-token").post(refreshAccessToken);
 router.route("/forgot-password").post(forgotPassword);
-router.route("/verify-reset-otp").post(verifyPasswordResetOtp);
+router.route("/verify-reset-otp").post(verifyForgotPasswordOtp);
 router.route("/reset-password").post(resetPassword);
-
+router.route("/update-profile").patch(verifyJWT,upload.single("avatar"),updateProfile);
 // Protected routes (auth needed)
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/change-password").post(verifyJWT, changePassword);

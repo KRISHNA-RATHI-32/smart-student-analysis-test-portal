@@ -225,7 +225,74 @@ const getTestQuestions = asyncHandler(async (req, res) => {
         .status(200)
         .json(new ApiResponse(200, testWithQuestions[0], "Questions loaded (securely)"))
 })
+const updateTest = asyncHandler(async (req, res) => {
+    const { testId } = req.params;
+    const { title, description, duration, totalMarks, category } = req.body;
+    
+    // 1. Capture the local file path immediately so we can clean it up if anything fails
+    const localFilePath = req.file?.path;
 
+    try {
+        validateTestId(testId);
+        
+        const test = await Test.findById(testId);
+        if (!test) throw new ApiError(404, "Test not found");
+
+        // Only the teacher who created it (or admin) can update it
+        if (test.teacher.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+            throw new ApiError(403, "You can only update your own tests");
+        }
+
+        // If title is being changed, check it doesn't conflict with another test by same teacher
+        if (title && title !== test.title) {
+            const conflict = await Test.findOne({ title, teacher: req.user._id });
+            if (conflict) throw new ApiError(409, "You already have a test with this title");
+            test.title = title;
+        }
+
+        // Update basic fields
+        if (description !== undefined) test.description = description;
+        if (duration) test.duration = Number(duration);
+        if (totalMarks) test.totalMarks = Number(totalMarks);
+        if (category) test.category = category;
+
+        // Handle new thumbnail upload if provided
+        if (localFilePath) {
+            
+            // [BETTER WAY]: Non-blocking deletion. 
+            // If deleting the old image fails, don't crash the whole update process!
+            if (test.thumbnail) {
+                try {
+                    await deleteFromCloudinary(test.thumbnail);
+                } catch (cloudinaryErr) {
+                    console.warn(`Could not delete old thumbnail for test ${testId}, proceeding anyway.`);
+                }
+            }
+
+            const uploaded = await uploadOnCloudinary(localFilePath);
+            if (!uploaded) throw new ApiError(500, "Thumbnail upload failed");
+            
+            test.thumbnail = uploaded.url;
+        }
+
+        await test.save();
+        return res.status(200).json(new ApiResponse(200, test, "Test updated successfully"));
+
+    } catch (error) {
+        // [BETTER WAY]: The Storage Leak Fix!
+        // If ANY error was thrown above (403, 409, 404, etc.), we must delete the file 
+        // Multer left in the temp folder before passing the error to the global handler.
+        if (localFilePath && fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath);
+        }
+        
+        // Re-throw the error so asyncHandler can send the proper response to the frontend
+        throw error; 
+    }
+});
+
+// Ensure you export it at the bottom:
+// export { ..., updateTest };
 
 export {
     createTest, addQuestionToSection, getAllTests, getTestById, getTestQuestions

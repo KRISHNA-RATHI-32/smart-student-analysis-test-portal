@@ -145,6 +145,16 @@ export const authApi = {
     request<{ statusCode: number; data: object; message: string }>(
       "/users/change-password", { method: "POST", body: data }
     ),
+    updateProfile: (data: { fullName?: string; phone?: string; avatar?: File }) => {
+    const formData = new FormData();
+    if (data.fullName) formData.append("fullName", data.fullName);
+    if (data.phone) formData.append("phone", data.phone);
+    if (data.avatar) formData.append("avatar", data.avatar);
+    
+    return requestMultipart<{ statusCode: number; data: UserPayload; message: string }>( 
+      "/users/update-profile", formData, "PATCH"
+    ); 
+  },
 };
 
 // ═══════════════════════════════════════════════

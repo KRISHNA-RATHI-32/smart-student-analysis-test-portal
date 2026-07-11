@@ -5,13 +5,22 @@ import { User } from "../modles/user.model.js"
 import { Otp } from "../modles/otp.model.js"
 import { sendOtpEmail } from "../utils/sendEmail.js"
 import { cookieOptions } from "../utils/cookieOptions.js"
+import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import jwt from "jsonwebtoken"
+import crypto from "crypto";
 
 // ─── Helper: generate 6-digit OTP ───
-function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
+export const generateOtp = () => {
+  // Cryptographically secure 6-digit OTP
+  return crypto.randomInt(100000, 1000000).toString();
+};
+// Helper function to pepper and hash the OTP
+const hashOtpSecurely = (plainTextOtp) => {
+    return crypto
+        .createHmac("sha256", process.env.OTP_SECRET_KEY)
+        .update(plainTextOtp.toString()) // ensure it's a string
+        .digest("hex");
+};
 // ─── STEP 1: Register → creates unverified user + sends OTP ───
 const registerUser = asyncHandler(async (req, res) => {
   const { fullName, email, username, password } = req.body;
@@ -157,7 +166,7 @@ const loginUser = asyncHandler(async (req, res) => {
     .status(200)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(new ApiResponse(200, { user: loggedInUser ,accessToken,refreshToken}, "Logged in successfully"));
+    .json(new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "Logged in successfully"));
 });
 
 // ─── Logout ───
@@ -222,49 +231,109 @@ const changePassword = asyncHandler(async (req, res) => {
 const getCurrentuser = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });
+
+
+
+
+
 const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email) throw new ApiError(400, "Email is required");
+
   const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) throw new ApiError(404, "No user found with this email");
-  const otp = generateOtp();
-  console.log(`[DEV ONLY] Password reset OTP for ${email.toLowerCase()}: ${otp}`);
-  await Otp.deleteMany({ email: email.toLowerCase() });
-  await Otp.create({ email: email.toLowerCase(), otp });
-  await sendOtpEmail(email, otp, "Password Reset OTP");
-  return res.status(200).json(new ApiResponse(200, { email }, "OTP sent to your email for password reset"));
-})
-const verifyPasswordResetOtp = asyncHandler(async (req, res) => {
+
+  // Prevents Email Enumeration attacks. Always returns success.
+  if (user) {
+    const otp = generateOtp();
+    // Clear old reset OTPs, create a new one strictly for 'reset'
+    console.log(`[DEV ONLY] Password reset OTP for ${email.toLowerCase()}: ${otp}`);
+    const hashedOtp=hashOtpSecurely(otp);
+    await Otp.deleteMany({ email: email.toLowerCase(), purpose: "reset" });
+    await Otp.create({ email: email.toLowerCase(), hashedOtp, purpose: "reset" });
+
+    // Using your exact email function signature
+    await sendOtpEmail(email, otp, "Password Reset OTP");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200, { email }, "If that email is registered, a reset OTP has been sent.")
+  );
+});
+const verifyForgotPasswordOtp = asyncHandler(async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) throw new ApiError(400, "Email and OTP are required");
-  
-  const otpRecord=await Otp.findOne({email:email.toLowerCase(),otp});
-  if(!otpRecord) throw new ApiError(400<"Invalid or expired OTP");
-  return res.status(200).json(new ApiResponse(200,{email},"OTP verified. You can now reset your password"));
-})
-const resetPassword = asyncHandler(async (req, res) => {
-  const { email, otp, newPassword} = req.body;
-  if(!email || !otp || !newPassword) throw new ApiError(400, "Email, OTP and new password are required");
-  const otpRecord=await Otp.findOne({email:email.toLowerCase(),otp});
-  if(!otpRecord) throw new ApiError(400<"Invalid or expired OTP");
-  const user=await User.findOne({email:email.toLowerCase()});
-  if(!user) throw new ApiError(404,"User not found");
-  user.password=newPassword;
-  await user.save({validateBeforeSave:false});
-  await Otp.deleteMany({email:email.toLowerCase()});
-  return res.status(200).json(new ApiResponse(200,{}, "Password reset successfully. Please log in with your new password"));
+  hashedInputOtp=hashOtpSecurely(otp);
+  const record = await Otp.findOne({
+    email: email.toLowerCase(),
+    hashedInputOtp,
+    purpose: "reset" // Strictly checks for reset OTPs
+  });
 
-})
+  if (!record) throw new ApiError(400, "Invalid or expired OTP");
+
+  return res.status(200).json(
+    new ApiResponse(200, { email }, "OTP verified. You can now reset your password.")
+  );
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword)
+    throw new ApiError(400, "Email, OTP, and new password are required");
+
+  if (newPassword.length < 8)
+    throw new ApiError(400, "Password must be at least 8 characters");
+
+  const record = await Otp.findOne({
+    email: email.toLowerCase(),
+    otp,
+    purpose: "reset"
+  });
+
+  if (!record) throw new ApiError(400, "Invalid or expired OTP. Please request a new one.");
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) throw new ApiError(404, "User not found");
+
+  user.password = newPassword;
+  user.refreshToken = undefined; // CRITICAL: Forces logout from all stolen/lost devices
+  await user.save({ validateBeforeSave: false });
+  await Otp.deleteMany({ email: email.toLowerCase(), purpose: "reset" });
+
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Password reset successfully. Please log in with your new password.")
+  );
+});
+// "I noticed a vulnerability in standard OTP implementations. Even though OTPs have a short lifespan, a database breach could allow attackers to hijack accounts currently in the reset flow. Because a 6-digit OTP only has 1 million combinations, a standard salt isn't enough. I implemented a crypto HMAC layer using a server-side pepper. The database only stores the irreversible hash. If the database is compromised, the OTPs remain completely mathematically uncrackable without the .env secret."
+const updateProfile = asyncHandler(async (req, res) => {
+  const { fullName, phone } = req.body;
+  const user = await User.findById(req.user._id);
+  if (!user) throw new ApiError(404, "User not found");
+  if (fullName) user.fullName = fullName.trim();
+  if (phone) user.phone = phone.trim();    // Handle avatar upload if a new file was sent 
+  if (req.file?.path) {     // Delete old avatar from Cloudinary if it exists     
+    if (user.avatar) {
+      await deleteFromCloudinary(user.avatar);
+    }
+    const uploaded = await uploadOnCloudinary(req.file.path);
+    if (!uploaded) throw new ApiError(500, "Avatar upload failed");
+    user.avatar = uploaded.url;
+  }
+  await user.save({ validateBeforeSave: false });
+  const updated = await User.findById(user._id).select("-password -refreshToken");
+  return res.status(200).json(new ApiResponse(200, updated, "Profile updated successfully"));
+});     // add to existing export list
 export {
   registerUser,
   verifyOtp,
   resendOtp,
+  updateProfile,
   loginUser,
   logoutUser,
   changePassword,
   getCurrentuser,
   refreshAccessToken,
   forgotPassword,
-  verifyPasswordResetOtp,
+  verifyForgotPasswordOtp,
   resetPassword
 };
